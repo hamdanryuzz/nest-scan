@@ -213,6 +213,7 @@ IMPORTANT:
     findings: Finding[],
     prioritizedFindings: AiFinding[],
   ): Promise<Pick<AiReview, 'executiveSummary' | 'overallRiskScore' | 'overallRiskLevel'>> {
+    const baseline = this.computeRiskAssessment(findings);
     const compactFindings = prioritizedFindings.slice(0, 12).map(aiFinding => {
       const original = findings.find(finding => finding.id === aiFinding.originalId);
       return `- [${original?.severity.toUpperCase() || 'INFO'}] ${original?.title || aiFinding.originalId} | ` +
@@ -224,6 +225,15 @@ IMPORTANT:
 Berikut temuan-temuan yang sudah diprioritaskan:
 
 ${compactFindings || '- Tidak ada finding'}
+
+Baseline heuristic:
+- score: ${baseline.score}
+- level: ${baseline.level}
+- critical findings: ${baseline.critical}
+- warning findings: ${baseline.warning}
+- info findings: ${baseline.info}
+
+Gunakan baseline ini sebagai anchor. Warning yang sangat banyak boleh menaikkan risk, tetapi jika critical findings = 0 jangan otomatis melonjak ke CRITICAL kecuali ada alasan yang sangat kuat.
 
 Return JSON persis dengan format:
 {
@@ -244,17 +254,19 @@ IMPORTANT:
         overallRiskLevel?: string;
       }>(model, prompt);
 
+      const aiScore = this.normalizeScore(parsed.overallRiskScore, baseline.score);
+      const finalScore = this.blendRiskScore(baseline, aiScore);
+
       return {
-        executiveSummary: parsed.executiveSummary || this.fallbackReview(findings).executiveSummary,
-        overallRiskScore: this.normalizeScore(parsed.overallRiskScore, this.fallbackReview(findings).overallRiskScore),
-        overallRiskLevel: this.normalizeRiskLevel(parsed.overallRiskLevel, this.fallbackReview(findings).overallRiskLevel),
+        executiveSummary: parsed.executiveSummary || baseline.executiveSummary,
+        overallRiskScore: finalScore,
+        overallRiskLevel: this.riskLevelFromScore(finalScore, baseline.critical),
       };
     } catch {
-      const fallback = this.fallbackReview(findings);
       return {
-        executiveSummary: fallback.executiveSummary,
-        overallRiskScore: fallback.overallRiskScore,
-        overallRiskLevel: fallback.overallRiskLevel,
+        executiveSummary: baseline.executiveSummary,
+        overallRiskScore: baseline.score,
+        overallRiskLevel: baseline.level,
       };
     }
   }
@@ -320,14 +332,12 @@ IMPORTANT:
   }
 
   private fallbackReview(findings: Finding[]): AiReview {
-    const critical = findings.filter(f => f.severity === 'critical').length;
-    const warning = findings.filter(f => f.severity === 'warning').length;
-    const score = Math.min(100, critical * 20 + warning * 8);
+    const assessment = this.computeRiskAssessment(findings);
 
     return {
-      executiveSummary: `Ditemukan ${critical} critical dan ${warning} warning issues.${!this.apiKey ? ' Tambahkan GEMINI_API_KEY di .env untuk AI review.' : ''}`,
-      overallRiskScore: score,
-      overallRiskLevel: score >= 70 ? 'CRITICAL' : score >= 40 ? 'HIGH' : score >= 20 ? 'MEDIUM' : 'LOW',
+      executiveSummary: `${assessment.executiveSummary}${!this.apiKey ? ' Tambahkan GEMINI_API_KEY di .env untuk AI review.' : ''}`,
+      overallRiskScore: assessment.score,
+      overallRiskLevel: assessment.level,
       prioritizedFindings: findings.map(finding => ({
         originalId: finding.id,
         aiSeverity: finding.severity.toUpperCase(),
@@ -385,6 +395,68 @@ IMPORTANT:
     const normalized = value.toUpperCase();
     if (['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(normalized)) return normalized;
     return fallback;
+  }
+
+  private computeRiskAssessment(findings: Finding[]): {
+    score: number;
+    level: string;
+    critical: number;
+    warning: number;
+    info: number;
+    executiveSummary: string;
+  } {
+    const critical = findings.filter(f => f.severity === 'critical').length;
+    const warning = findings.filter(f => f.severity === 'warning').length;
+    const info = findings.filter(f => f.severity === 'info').length;
+
+    const highConfidenceRisk = findings.filter(f =>
+      f.confidence === 'high' && (f.severity === 'critical' || f.severity === 'warning')).length;
+    const likelyTruePositive = findings.filter(f => f.aiValidation?.verdict === 'likely_true_positive').length;
+    const likelyFalsePositive = findings.filter(f => f.aiValidation?.verdict === 'likely_false_positive').length;
+
+    const criticalContribution = Math.min(80, critical * 40);
+    const warningContribution = Math.min(36, Math.round(24 * Math.log10(warning + 1)));
+    const infoContribution = Math.min(10, Math.round(5 * Math.log10(info + 1)));
+    const confidenceBonus = Math.min(8, highConfidenceRisk);
+    const validationBonus = Math.min(6, likelyTruePositive * 2);
+    const validationPenalty = Math.min(12, likelyFalsePositive * 3);
+
+    let score = criticalContribution + warningContribution + infoContribution + confidenceBonus + validationBonus - validationPenalty;
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    // No critical findings should not surface as CRITICAL risk just because warnings are numerous.
+    if (critical === 0) {
+      score = Math.min(score, 74);
+    }
+
+    return {
+      score,
+      level: this.riskLevelFromScore(score, critical),
+      critical,
+      warning,
+      info,
+      executiveSummary: `Ditemukan ${critical} critical, ${warning} warning, dan ${info} info findings.`,
+    };
+  }
+
+  private riskLevelFromScore(score: number, criticalCount: number): string {
+    if (score >= 75 && criticalCount > 0) return 'CRITICAL';
+    if (score >= 45) return 'HIGH';
+    if (score >= 18) return 'MEDIUM';
+    return 'LOW';
+  }
+
+  private blendRiskScore(
+    baseline: { score: number; critical: number },
+    aiScore: number,
+  ): number {
+    const blended = Math.round((baseline.score * 0.7) + (aiScore * 0.3));
+
+    if (baseline.critical === 0) {
+      return Math.min(blended, 74);
+    }
+
+    return Math.max(0, Math.min(100, blended));
   }
 
   private defaultActionTitle(action: AiFindingActionType, findingTitle: string): string {
