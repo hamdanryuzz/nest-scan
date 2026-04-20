@@ -1,10 +1,19 @@
 export type Severity = 'critical' | 'warning' | 'info';
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
+export type AiValidationVerdict = 'likely_true_positive' | 'needs_manual_review' | 'likely_false_positive';
+export type AiFindingActionType = 'explain' | 'fix-patch' | 'attack-scenario';
+
+export interface AiValidation {
+  verdict: AiValidationVerdict;
+  rationale: string;
+  confidence: number;
+}
 
 export interface Finding {
   id: string; analyzer: string; severity: Severity; title: string;
   description: string; file: string; line?: number; code?: string; suggestion?: string;
   confidence: ConfidenceLevel; confidenceScore: number; confidenceReason?: string;
+  aiValidation?: AiValidation;
 }
 
 export interface EndpointInfo {
@@ -23,6 +32,7 @@ export interface ModuleInfo {
 export interface AiFinding {
   originalId: string; aiSeverity: string; explanation: string;
   fixCode: string; impact: string; priority: number;
+  reviewNotes?: string;
 }
 
 export interface AiReview {
@@ -39,9 +49,24 @@ export interface ScanSummary {
 export interface ScanReport {
   id: string; repoUrl: string; branch: string; scannedAt: string;
   summary: ScanSummary; findings: Finding[]; endpoints: EndpointInfo[];
-  modules: ModuleInfo[]; aiReview?: AiReview;
+  modules: ModuleInfo[]; aiReview?: AiReview; aiEnabled: boolean;
 }
 
 export interface ScanRequest {
   repoUrl: string; branch: string; pat?: string;
+}
+
+export interface AiFindingActionRequest {
+  reportId: string;
+  findingId: string;
+  action: AiFindingActionType;
+}
+
+export interface AiFindingActionResponse {
+  reportId: string;
+  findingId: string;
+  action: AiFindingActionType;
+  title: string;
+  content: string;
+  generatedAt: string;
 }

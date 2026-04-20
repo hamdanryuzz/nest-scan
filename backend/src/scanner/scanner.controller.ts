@@ -1,6 +1,11 @@
 import { Body, Controller, Post, HttpException, HttpStatus } from '@nestjs/common';
 import { ScannerService } from './scanner.service';
-import { ScanReport, ScanRequest } from './models/report.model';
+import {
+  AiFindingActionRequest,
+  AiFindingActionResponse,
+  ScanReport,
+  ScanRequest,
+} from './models/report.model';
 
 @Controller('scanner')
 export class ScannerController {
@@ -18,6 +23,19 @@ export class ScannerController {
       return await this.scannerService.scan(body);
     } catch (error: any) {
       throw new HttpException(error.message || 'Scan gagal', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Post('ai-action')
+  async runAiAction(@Body() body: AiFindingActionRequest): Promise<AiFindingActionResponse> {
+    if (!body.reportId || !body.findingId || !body.action) {
+      throw new HttpException('reportId, findingId, dan action wajib diisi', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      return await this.scannerService.runFindingAiAction(body);
+    } catch (error: any) {
+      throw new HttpException(error.message || 'AI action gagal', HttpStatus.BAD_REQUEST);
     }
   }
 }

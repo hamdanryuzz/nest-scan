@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GitHubApiService, RepoFile } from './git/github-api.service';
 import { GemmaService } from './ai/gemma.service';
-import { ScanReport, ScanRequest, Finding } from './models/report.model';
+import {
+  AiFindingActionRequest,
+  AiFindingActionResponse,
+  Finding,
+  ScanReport,
+  ScanRequest,
+} from './models/report.model';
 import { AuthGuardAnalyzer } from './analyzers/auth-guard.analyzer';
 import { IdorAnalyzer } from './analyzers/idor.analyzer';
 import { InjectionAnalyzer } from './analyzers/injection.analyzer';
@@ -22,6 +28,13 @@ import * as os from 'os';
 @Injectable()
 export class ScannerService {
   private readonly logger = new Logger(ScannerService.name);
+  private readonly scanContextCache = new Map<string, {
+    createdAt: number;
+    report: ScanReport;
+    fileMap: Map<string, string>;
+    actions: Map<string, AiFindingActionResponse>;
+  }>();
+  private readonly cacheTtlMs = 1000 * 60 * 60;
 
   constructor(
     private readonly github: GitHubApiService,
@@ -85,6 +98,11 @@ export class ScannerService {
       // 5. AI Review (if GEMINI_API_KEY set in .env)
       let aiReview = undefined;
       if (this.gemma.isEnabled) {
+        const validations = await this.gemma.validateLikelyFalsePositives(visibleFindings, fileMap);
+        for (const finding of visibleFindings) {
+          const validation = validations.get(finding.id);
+          if (validation) finding.aiValidation = validation;
+        }
         aiReview = await this.gemma.reviewFindings(visibleFindings, fileMap);
       }
 
@@ -107,8 +125,10 @@ export class ScannerService {
         endpoints: endpointAnalyzer.endpoints,
         modules: moduleAnalyzer.modules,
         aiReview,
+        aiEnabled: this.gemma.isEnabled,
       };
 
+      this.persistScanContext(report, fileMap);
       this.logger.log(`Scan complete: ${visibleFindings.length} findings in ${report.summary.scanDurationMs}ms`);
       return report;
 
@@ -206,5 +226,54 @@ export class ScannerService {
       }
       return a.title.localeCompare(b.title);
     });
+  }
+
+  async runFindingAiAction(request: AiFindingActionRequest): Promise<AiFindingActionResponse> {
+    if (!this.gemma.isEnabled) {
+      throw new Error('GEMINI_API_KEY belum diset. AI action tidak tersedia.');
+    }
+
+    this.cleanupScanContextCache();
+    const cached = this.scanContextCache.get(request.reportId);
+    if (!cached) {
+      throw new Error('Context scan sudah kadaluarsa. Jalankan scan ulang untuk memakai AI action.');
+    }
+
+    const cacheKey = `${request.findingId}:${request.action}`;
+    const cachedAction = cached.actions.get(cacheKey);
+    if (cachedAction) return cachedAction;
+
+    const finding = cached.report.findings.find(item => item.id === request.findingId);
+    if (!finding) {
+      throw new Error('Finding tidak ditemukan pada report yang dipilih.');
+    }
+
+    const response = await this.gemma.generateFindingAction(
+      request.reportId,
+      finding,
+      request.action,
+      cached.fileMap,
+    );
+    cached.actions.set(cacheKey, response);
+    return response;
+  }
+
+  private persistScanContext(report: ScanReport, fileMap: Map<string, string>): void {
+    this.cleanupScanContextCache();
+    this.scanContextCache.set(report.id, {
+      createdAt: Date.now(),
+      report,
+      fileMap,
+      actions: new Map(),
+    });
+  }
+
+  private cleanupScanContextCache(): void {
+    const now = Date.now();
+    for (const [reportId, context] of this.scanContextCache.entries()) {
+      if (now - context.createdAt > this.cacheTtlMs) {
+        this.scanContextCache.delete(reportId);
+      }
+    }
   }
 }

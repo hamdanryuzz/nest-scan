@@ -82,6 +82,15 @@ html, body {
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-primary.loading { background: var(--bg-3); color: var(--text-1); }
+.btn-secondary {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-0); color: var(--text-0); border: 1px solid var(--border-1);
+  border-radius: 6px; padding: 10px 14px; font-size: 13px;
+  font-weight: 600; font-family: var(--sans); cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--text-1); background: var(--bg-2); }
+.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Risk Banner ─────────────────── */
 .risk-banner {
@@ -170,6 +179,10 @@ html, body {
 .finding-tag.confidence.high { background: var(--green-dim); color: var(--green); }
 .finding-tag.confidence.medium { background: var(--orange-dim); color: var(--orange); }
 .finding-tag.confidence.low { background: var(--blue-dim); color: var(--blue); }
+.finding-tag.validation.likely_true_positive { background: var(--green-dim); color: var(--green); }
+.finding-tag.validation.needs_manual_review { background: var(--orange-dim); color: var(--orange); }
+.finding-tag.validation.likely_false_positive { background: var(--blue-dim); color: var(--blue); }
+.finding-tag.ai-tag { background: var(--purple-dim); color: var(--purple); }
 .finding-chevron { color: var(--text-2); font-size: 12px; transition: transform 0.15s; }
 .finding-chevron.open { transform: rotate(90deg); }
 
@@ -182,6 +195,14 @@ html, body {
 .confidence-note.high { background: var(--green-dim); color: var(--green); }
 .confidence-note.medium { background: var(--orange-dim); color: var(--orange); }
 .confidence-note.low { background: var(--blue-dim); color: var(--blue); }
+.validation-note {
+  font-size: 12px; line-height: 1.6;
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+}
+.validation-note.likely_true_positive { background: var(--green-dim); color: var(--green); }
+.validation-note.needs_manual_review { background: var(--orange-dim); color: var(--orange); }
+.validation-note.likely_false_positive { background: var(--blue-dim); color: var(--blue); }
+.validation-meta { margin-top: 6px; opacity: 0.9; font-size: 11px; }
 .finding-file {
   font-family: var(--mono); font-size: 12px; color: var(--blue);
   margin-bottom: 10px;
@@ -214,6 +235,35 @@ html, body {
 .ai-impact {
   font-size: 12px; color: var(--orange); margin-top: 8px;
   padding: 8px 12px; background: var(--orange-dim); border-radius: 4px;
+}
+.review-note {
+  background: var(--bg-2); color: var(--text-1); border-radius: 6px;
+  padding: 10px 12px; font-size: 12px; margin-bottom: 12px; line-height: 1.5;
+}
+.ai-action-panel {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-0);
+}
+.ai-action-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-2); margin-bottom: 8px;
+}
+.ai-action-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-action-btn.active {
+  border-color: var(--purple); background: var(--purple-dim); color: var(--text-0);
+}
+.ai-action-error {
+  margin-top: 10px; background: var(--red-dim); color: var(--red);
+  border-radius: 6px; padding: 10px 12px; font-size: 12px;
+}
+.ai-action-result {
+  margin-top: 12px; background: var(--bg-0); border: 1px solid var(--border-0);
+  border-radius: 8px; padding: 12px 14px;
+}
+.ai-action-result-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.ai-action-result-meta { font-size: 11px; color: var(--text-2); margin-bottom: 10px; }
+.ai-action-content {
+  font-family: var(--mono); font-size: 12px; color: var(--text-1);
+  white-space: pre-wrap; line-height: 1.6;
 }
 
 /* ── Endpoint Table ──────────────── */
@@ -274,9 +324,59 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 /* ── Meta ─────────────────────────── */
 .scan-meta { font-size: 12px; color: var(--text-2); text-align: right; margin-bottom: 16px; }
 
+.export-panel {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+  border: 1px solid var(--border-0); border-radius: 8px; padding: 20px 22px;
+  margin-bottom: 20px;
+}
+.export-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.export-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.export-subtitle { font-size: 13px; color: var(--text-1); line-height: 1.5; max-width: 680px; }
+.export-summary {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.export-summary span {
+  font-size: 11px; font-weight: 600; color: var(--text-1);
+  background: var(--bg-2); border-radius: 999px; padding: 4px 10px;
+}
+.export-grid {
+  display: grid; grid-template-columns: 1.1fr 1fr auto;
+  gap: 16px; align-items: end;
+}
+.export-panel > .export-section { margin-bottom: 16px; }
+.export-section label {
+  display: block; font-size: 11px; font-weight: 600; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
+}
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-chip {
+  background: var(--bg-0); color: var(--text-1); border: 1px solid var(--border-0);
+  border-radius: 999px; padding: 7px 12px; font-size: 12px;
+  font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.filter-chip:hover { border-color: var(--border-1); color: var(--text-0); }
+.filter-chip.active {
+  background: var(--text-0); border-color: var(--text-0); color: var(--bg-0);
+}
+.export-actions {
+  display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap;
+}
+.export-note {
+  font-size: 12px; color: var(--text-2); margin-top: 14px;
+}
+.export-status {
+  margin-top: 10px; font-size: 12px; color: var(--blue);
+  background: var(--blue-dim); border-radius: 6px; padding: 10px 12px;
+}
+
 /* ── Responsive ──────────────────── */
 @media (max-width: 768px) {
   .field-grid { grid-template-columns: 1fr; }
   .stat-row { grid-template-columns: repeat(3, 1fr); }
   .module-grid { grid-template-columns: 1fr; }
+  .export-grid { grid-template-columns: 1fr; }
+  .export-actions { justify-content: flex-start; }
 }
