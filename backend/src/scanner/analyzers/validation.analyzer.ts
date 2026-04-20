@@ -12,16 +12,24 @@ export class ValidationAnalyzer extends BaseAnalyzer {
     const srcPath = path.join(projectPath, 'src');
     if (!fs.existsSync(srcPath)) return findings;
 
+    // Check if global ValidationPipe is configured in main.ts
+    const mainTsPath = path.join(srcPath, 'main.ts');
+    const hasGlobalPipe = fs.existsSync(mainTsPath) &&
+      /useGlobalPipes|ValidationPipe/.test(fs.readFileSync(mainTsPath, 'utf-8'));
+
     const dtoFiles = this.findFiles(srcPath, '.dto.ts');
     for (const file of dtoFiles) {
       const content = fs.readFileSync(file, 'utf-8');
       this.checkMissingValidators(content, file, projectPath, findings);
     }
 
-    const controllerFiles = this.findFiles(srcPath, '.controller.ts');
-    for (const file of controllerFiles) {
-      const content = fs.readFileSync(file, 'utf-8');
-      this.checkMissingValidationPipe(content, file, projectPath, findings);
+    // Only check per-controller ValidationPipe if no global pipe is set
+    if (!hasGlobalPipe) {
+      const controllerFiles = this.findFiles(srcPath, '.controller.ts');
+      for (const file of controllerFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+        this.checkMissingValidationPipe(content, file, projectPath, findings);
+      }
     }
 
     return findings;

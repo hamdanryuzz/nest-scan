@@ -58,6 +58,7 @@ export class GemmaService {
         return `### Finding ${i + 1}: [${f.severity.toUpperCase()}] ${f.title}
 File: ${f.file}${f.line ? `:${f.line}` : ''}
 Analyzer: ${f.analyzer}
+Confidence: ${f.confidence.toUpperCase()} (${f.confidenceScore}/100)${f.confidenceReason ? ` - ${f.confidenceReason}` : ''}
 Description: ${f.description}
 ${codeSnippet ? `Code:\n\`\`\`typescript\n${codeSnippet}\n\`\`\`` : ''}`;
       }).join('\n\n');

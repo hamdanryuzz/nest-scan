@@ -71,7 +71,6 @@ export class SensitiveDataAnalyzer extends BaseAnalyzer {
 
     for (let i = 0; i < lines.length; i++) {
       const text = lines[i].text;
-      // Check prisma queries that fetch password-containing models without select/exclusion
       const queryMatch = text.match(/prisma\.(\w+)\.(findFirst|findUnique|findMany)\s*\(/);
       if (!queryMatch) continue;
 
@@ -79,7 +78,17 @@ export class SensitiveDataAnalyzer extends BaseAnalyzer {
       const passwordModels = ['admin', 'user', 'merchantuser', 'merchant_user', 'promotionEventAccount'];
       if (!passwordModels.some(m => modelName.includes(m.toLowerCase()))) continue;
 
-      // Look ahead for select clause or password exclusion
+      // Walk back to find the enclosing method name
+      let enclosingMethod = '';
+      for (let j = i; j >= Math.max(0, i - 30); j--) {
+        const methodMatch = lines[j].text.match(/(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*\S+)?\s*\{/);
+        if (methodMatch) { enclosingMethod = methodMatch[1].toLowerCase(); break; }
+      }
+
+      // Auth methods intentionally fetch password for bcrypt comparison — skip
+      const AUTH_METHOD_PATTERNS = /login|authenticate|verify|validate|comparepassword|checkpassword|signin/i;
+      if (AUTH_METHOD_PATTERNS.test(enclosingMethod)) continue;
+
       const methodBlock = lines.slice(i, Math.min(i + 15, lines.length)).map(l => l.text).join('\n');
       const hasSelect = /select\s*:/.test(methodBlock);
       const hasPasswordExclusion = /password\s*[:,]\s*(?:undefined|false)|{\s*password\s*,\s*\.\.\./.test(methodBlock);
@@ -88,10 +97,9 @@ export class SensitiveDataAnalyzer extends BaseAnalyzer {
       if (!hasSelect && !hasPasswordExclusion && !hasOmit) {
         findings.push(this.createFinding('warning',
           `Password mungkin terekspos dari ${queryMatch[1]}.${queryMatch[2]}()`,
-          `Query ke model "${queryMatch[1]}" tanpa select/omit. Field password bisa ikut ter-return ke API response.\n` +
-          `Hacker bisa crack password hash offline pakai tools seperti hashcat.`,
+          `Query ke model "${queryMatch[1]}" tanpa select/omit. Field password bisa ikut ter-return ke response API.`,
           file, projectPath, { line: lines[i].lineNum, code: text.trim(),
-            suggestion: 'Tambahkan select clause atau destructure { password, ...safe } = result.' }));
+            suggestion: 'Tambahkan select clause atau: const { password, ...safe } = result; return safe;' }));
       }
     }
   }

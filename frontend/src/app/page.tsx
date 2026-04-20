@@ -3,9 +3,14 @@ import { useState } from "react";
 
 const API = "http://localhost:4000";
 type Sev = "critical" | "warning" | "info";
+type Confidence = "high" | "medium" | "low";
 type Tab = "all" | "security" | "quality" | "endpoints" | "modules";
 
-interface Finding { id: string; analyzer: string; severity: Sev; title: string; description: string; file: string; line?: number; code?: string; suggestion?: string; }
+interface Finding {
+  id: string; analyzer: string; severity: Sev; title: string;
+  description: string; file: string; line?: number; code?: string; suggestion?: string;
+  confidence: Confidence; confidenceScore: number; confidenceReason?: string;
+}
 interface Endpoint { method: string; path: string; controller: string; handler: string; guards: string[]; dtoName?: string; params: string[]; hasBody: boolean; line: number; }
 interface Mod { name: string; path: string; hasController: boolean; hasService: boolean; hasModule: boolean; hasDtoFolder: boolean; hasSpecFile: boolean; }
 interface AiFinding { originalId: string; aiSeverity: string; explanation: string; fixCode: string; impact: string; priority: number; }
@@ -53,6 +58,7 @@ export default function Home() {
 
   const getAiFinding = (id: string) => report?.aiReview?.prioritizedFindings?.find(a => a.originalId === id);
   const riskClass = (level: string) => level?.toLowerCase() || "medium";
+  const confidenceLabel = (f: Finding) => `${f.confidence.toUpperCase()} ${f.confidenceScore}`;
 
   return (
     <div className="shell">
@@ -154,12 +160,14 @@ export default function Home() {
                       <span className={`sev ${f.severity}`}>{f.severity}</span>
                       <span className="finding-title">{f.title}</span>
                       <span className="finding-tag">{f.analyzer}</span>
+                      <span className={`finding-tag confidence ${f.confidence}`}>{confidenceLabel(f)}</span>
                       {ai && <span className="finding-tag" style={{background:"var(--purple-dim)",color:"var(--purple)"}}>AI P{ai.priority}</span>}
                       <span className={`finding-chevron ${isOpen ? "open" : ""}`}>▶</span>
                     </div>
                     {isOpen && (
                       <div className="finding-body">
                         <p className="finding-desc">{ai ? ai.explanation : f.description}</p>
+                        {f.confidenceReason && <div className={`confidence-note ${f.confidence}`}>Confidence: {f.confidenceReason}</div>}
                         {f.file && <div className="finding-file">📄 {f.file}{f.line ? `:${f.line}` : ""}</div>}
                         {f.code && <pre className="code-block">{f.code}</pre>}
                         {ai?.fixCode && (

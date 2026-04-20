@@ -64,7 +64,11 @@ export class ScannerService {
 
       // 4. Enrich findings with actual code snippets from fetched files
       const fileMap = new Map(files.map(f => [f.path, f.content]));
-      for (const finding of allFindings) {
+      const visibleFindings = this.sortFindings(
+        this.applySuppressions(allFindings, fileMap),
+      );
+
+      for (const finding of visibleFindings) {
         if (finding.file && !finding.code) {
           const content = fileMap.get(finding.file) || fileMap.get('src/' + finding.file);
           if (content && finding.line) {
@@ -81,7 +85,7 @@ export class ScannerService {
       // 5. AI Review (if GEMINI_API_KEY set in .env)
       let aiReview = undefined;
       if (this.gemma.isEnabled) {
-        aiReview = await this.gemma.reviewFindings(allFindings, fileMap);
+        aiReview = await this.gemma.reviewFindings(visibleFindings, fileMap);
       }
 
       // 6. Build report
@@ -91,21 +95,21 @@ export class ScannerService {
         branch: request.branch,
         scannedAt: new Date().toISOString(),
         summary: {
-          critical: allFindings.filter(f => f.severity === 'critical').length,
-          warning: allFindings.filter(f => f.severity === 'warning').length,
-          info: allFindings.filter(f => f.severity === 'info').length,
+          critical: visibleFindings.filter(f => f.severity === 'critical').length,
+          warning: visibleFindings.filter(f => f.severity === 'warning').length,
+          info: visibleFindings.filter(f => f.severity === 'info').length,
           totalFiles: files.length,
           totalModules: moduleAnalyzer.modules.length,
           totalEndpoints: endpointAnalyzer.endpoints.length,
           scanDurationMs: Date.now() - startTime,
         },
-        findings: allFindings,
+        findings: visibleFindings,
         endpoints: endpointAnalyzer.endpoints,
         modules: moduleAnalyzer.modules,
         aiReview,
       };
 
-      this.logger.log(`Scan complete: ${allFindings.length} findings in ${report.summary.scanDurationMs}ms`);
+      this.logger.log(`Scan complete: ${visibleFindings.length} findings in ${report.summary.scanDurationMs}ms`);
       return report;
 
     } finally {
@@ -121,5 +125,86 @@ export class ScannerService {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(fullPath, file.content, 'utf-8');
     }
+  }
+
+  private applySuppressions(findings: Finding[], fileMap: Map<string, string>): Finding[] {
+    let suppressed = 0;
+    const visible = findings.filter(finding => {
+      const content = fileMap.get(finding.file) || fileMap.get(`src/${finding.file}`);
+      const isSuppressed = !!content && this.findSuppression(finding, content);
+      if (isSuppressed) suppressed += 1;
+      return !isSuppressed;
+    });
+
+    if (suppressed > 0) {
+      this.logger.log(`Suppressed ${suppressed} finding(s) via nest-scan ignore directives`);
+    }
+
+    return visible;
+  }
+
+  private findSuppression(finding: Finding, content: string): string | undefined {
+    const lines = content.split('\n');
+    const analyzer = finding.analyzer.toLowerCase();
+
+    const matchesAnalyzer = (raw: string) => {
+      const tokens = raw
+        .split(/[,\s]+/)
+        .map(token => token.trim().toLowerCase())
+        .filter(Boolean);
+
+      return tokens.includes('all') || tokens.includes(analyzer);
+    };
+
+    for (const line of lines) {
+      const fileMatch = line.match(/nest-scan-ignore-file\s+([a-z0-9-_,\s]+)/i);
+      if (fileMatch && matchesAnalyzer(fileMatch[1])) return 'comment:file';
+    }
+
+    if (!finding.line) return undefined;
+
+    const currentIndex = Math.max(0, finding.line - 1);
+    const nearbyStart = Math.max(0, currentIndex - 2);
+    const nearbyLines = lines.slice(nearbyStart, currentIndex + 1);
+    for (const line of nearbyLines) {
+      const inlineMatch = line.match(/nest-scan-ignore\s+([a-z0-9-_,\s]+)/i);
+      if (inlineMatch && matchesAnalyzer(inlineMatch[1])) return 'comment:inline';
+    }
+
+    const prevLine = lines[currentIndex - 1];
+    if (prevLine) {
+      const nextLineMatch = prevLine.match(/nest-scan-ignore-next-line\s+([a-z0-9-_,\s]+)/i);
+      if (nextLineMatch && matchesAnalyzer(nextLineMatch[1])) return 'comment:next-line';
+    }
+
+    const decoratorWindow = lines
+      .slice(Math.max(0, currentIndex - 5), currentIndex + 1)
+      .join('\n');
+    const decoratorPattern = /@NestScanIgnore\s*\(([\s\S]*?)\)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = decoratorPattern.exec(decoratorWindow))) {
+      const normalized = match[1].replace(/[[\]'"\s]/g, ' ');
+      if (matchesAnalyzer(normalized)) return 'decorator';
+    }
+
+    return undefined;
+  }
+
+  private sortFindings(findings: Finding[]): Finding[] {
+    const severityWeight: Record<Finding['severity'], number> = {
+      critical: 3,
+      warning: 2,
+      info: 1,
+    };
+
+    return [...findings].sort((a, b) => {
+      if (severityWeight[b.severity] !== severityWeight[a.severity]) {
+        return severityWeight[b.severity] - severityWeight[a.severity];
+      }
+      if (b.confidenceScore !== a.confidenceScore) {
+        return b.confidenceScore - a.confidenceScore;
+      }
+      return a.title.localeCompare(b.title);
+    });
   }
 }

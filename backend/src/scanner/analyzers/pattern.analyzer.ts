@@ -34,11 +34,16 @@ export class PatternAnalyzer extends BaseAnalyzer {
     const httpMethods = this.findPattern(content, /@(Get|Post|Patch|Put|Delete)\(/);
     const tryCatches = (content.match(/try\s*\{/g) || []).length;
 
+    // Projects that use a global exception filter don't need per-handler try-catch
+    const hasExceptionFilter = /@UseFilters|ExceptionFilter|HttpExceptionFilter|catch-all|AllExceptionsFilter/.test(content);
+    if (hasExceptionFilter) return;
+
     if (httpMethods.length > 0 && tryCatches === 0) {
-      findings.push(this.createFinding('warning', 'Controller tanpa try-catch',
-        `Controller punya ${httpMethods.length} endpoint tapi tidak ada try-catch. Error tidak di-handle.`,
+      findings.push(this.createFinding('warning', 'Controller tanpa try-catch atau exception filter',
+        `Controller punya ${httpMethods.length} endpoint tapi tidak ada try-catch. ` +
+        `Error tidak di-handle — bisa expose stack trace ke user.`,
         file, projectPath,
-        { suggestion: 'Wrap setiap handler dengan try-catch + errorResponse(), atau pakai global exception filter.' }));
+        { suggestion: 'Wrap handler dengan try-catch, pakai global exception filter, atau @UseFilters().' }));
     } else if (httpMethods.length > tryCatches && tryCatches > 0) {
       findings.push(this.createFinding('info',
         `${httpMethods.length - tryCatches} endpoint mungkin tanpa try-catch`,

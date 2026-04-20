@@ -1,8 +1,10 @@
 export type Severity = 'critical' | 'warning' | 'info';
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
 export interface Finding {
   id: string; analyzer: string; severity: Severity; title: string;
   description: string; file: string; line?: number; code?: string; suggestion?: string;
+  confidence: ConfidenceLevel; confidenceScore: number; confidenceReason?: string;
 }
 
 export interface EndpointInfo {

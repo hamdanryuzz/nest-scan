@@ -167,11 +167,21 @@ html, body {
   font-size: 11px; color: var(--text-2); background: var(--bg-2);
   padding: 2px 8px; border-radius: 3px;
 }
+.finding-tag.confidence.high { background: var(--green-dim); color: var(--green); }
+.finding-tag.confidence.medium { background: var(--orange-dim); color: var(--orange); }
+.finding-tag.confidence.low { background: var(--blue-dim); color: var(--blue); }
 .finding-chevron { color: var(--text-2); font-size: 12px; transition: transform 0.15s; }
 .finding-chevron.open { transform: rotate(90deg); }
 
 .finding-body { padding: 0 16px 16px; }
 .finding-desc { font-size: 13px; color: var(--text-1); line-height: 1.6; margin-bottom: 12px; }
+.confidence-note {
+  font-size: 12px; line-height: 1.5;
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+}
+.confidence-note.high { background: var(--green-dim); color: var(--green); }
+.confidence-note.medium { background: var(--orange-dim); color: var(--orange); }
+.confidence-note.low { background: var(--blue-dim); color: var(--blue); }
 .finding-file {
   font-family: var(--mono); font-size: 12px; color: var(--blue);
   margin-bottom: 10px;

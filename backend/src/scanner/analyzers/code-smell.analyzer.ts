@@ -30,9 +30,9 @@ export class CodeSmellAnalyzer extends BaseAnalyzer {
     const lineCount = content.split('\n').length;
     if (lineCount > 500) {
       findings.push(this.createFinding('warning', `File terlalu panjang: ${lineCount} baris`,
-        `File ini punya ${lineCount} baris. File yang terlalu panjang sulit di-review dan maintain. Consider split ke beberapa file.`,
+        `File ini punya ${lineCount} baris. Terlalu panjang untuk di-review dan di-maintain. Pertimbangkan untuk di-split.`,
         file, projectPath, { suggestion: 'Pecah ke beberapa file/class berdasarkan tanggung jawab.' }));
-    } else if (lineCount > 300) {
+    } else if (lineCount > 400) {
       findings.push(this.createFinding('info', `File cukup panjang: ${lineCount} baris`,
         'Pertimbangkan untuk memecah file ini jika masih akan bertambah.', file, projectPath));
     }
@@ -59,7 +59,7 @@ export class CodeSmellAnalyzer extends BaseAnalyzer {
       if (methodMatch && !text.includes('if') && !text.includes('for') && !text.includes('while')) {
         if (methodStart) {
           const length = lineNum - methodStart.line;
-          if (length > 60) {
+          if (length > 80) {
             findings.push(this.createFinding('info',
               `Method ${methodStart.name}() terlalu panjang: ${length} baris`,
               'Method yang panjang sulit di-test dan di-review. Pecah ke helper methods.',
@@ -94,11 +94,19 @@ export class CodeSmellAnalyzer extends BaseAnalyzer {
       }
     }
 
+    // Common NestJS/service methods that are naturally duplicated across modules — skip them
+    const COMMON_METHODS = [
+      'findAll', 'findOne', 'create', 'update', 'remove', 'delete',
+      'findFiles', 'readLines', 'analyze', 'createFinding', 'checkFileLength',
+      'transform', 'validate', 'toJSON', 'toPlainObject', 'serialize',
+      'onModuleInit', 'onModuleDestroy', 'constructor',
+    ];
+
     for (const [name, files] of functionMap) {
-      if (files.length > 2 && !['findAll', 'findOne', 'create', 'update', 'remove'].includes(name)) {
+      if (files.length > 3 && !COMMON_METHODS.includes(name) && name.length > 3) {
         findings.push(this.createFinding('info',
           `Function "${name}" duplikat di ${files.length} file`,
-          `Function ini ada di: ${files.slice(0, 5).join(', ')}${files.length > 5 ? '...' : ''}. Consider extract ke shared utility.`,
+          `Function ini ada di: ${files.slice(0, 5).join(', ')}${files.length > 5 ? '...' : ''}. Pertimbangkan extract ke shared utility.`,
           files[0], projectPath));
       }
     }

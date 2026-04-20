@@ -25,20 +25,25 @@ export class TypeSafetyAnalyzer extends BaseAnalyzer {
 
   private checkAnyUsage(content: string, file: string, projectPath: string, findings: Finding[]): void {
     const anyMatches = this.findPattern(content, /:\s*any\b/);
-    const promiseAnyMatches = this.findPattern(content, /Promise<any>/);
+    const promiseAnyMatches = this.findPattern(content, /Promise<any>/).filter(m => {
+      // Skip catch/error handler lines — common acceptable pattern
+      return !/catch|error|err|exception/i.test(m.text);
+    });
 
+    // Raise threshold: flag only when there are really a lot of `any` usages
     const totalAny = anyMatches.length;
-    if (totalAny > 10) {
+    if (totalAny > 15) {
       findings.push(this.createFinding('warning', `${totalAny}x penggunaan tipe \`any\``,
         `File ini punya ${totalAny} penggunaan tipe \`any\`. Type safety hilang — error tidak terdeteksi saat compile.`,
         file, projectPath, { suggestion: 'Buat interface/type untuk return values dan parameters.' }));
     }
 
+    // One finding per file, not per-occurrence
     if (promiseAnyMatches.length > 0) {
-      findings.push(this.createFinding('warning', `${promiseAnyMatches.length}x Promise<any> return type`,
-        `${promiseAnyMatches.length} method return Promise<any>. Caller tidak tau bentuk datanya — error bisa terjadi tanpa warning.`,
+      findings.push(this.createFinding('info', `${promiseAnyMatches.length}x Promise<any> return type`,
+        `${promiseAnyMatches.length} method return Promise<any>. Definisikan tipe return yang spesifik untuk type safety.`,
         file, projectPath, { line: promiseAnyMatches[0].lineNum,
-          suggestion: 'Definisikan return type: Promise<TagResponse> instead of Promise<any>.' }));
+          suggestion: 'Ganti Promise<any> dengan Promise<YourType>.' }));
     }
   }
 
